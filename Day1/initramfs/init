@@ -1,0 +1,16 @@
+#!/bin/busybox sh
+# 最小 initramfs 的 init：加载模块 -> 看日志 -> 卸载 -> 关机
+
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+/bin/busybox mount -t devtmpfs none /dev
+
+echo "=== insmod ==="
+/bin/busybox insmod /rust_hello.ko || echo "insmod FAILED"
+/bin/busybox dmesg | /bin/busybox tail -n 5
+
+/bin/busybox rmmod rust_hello 2>/dev/null
+/bin/busybox dmesg | /bin/busybox tail -n 3
+
+echo "=== done ==="
+/bin/busybox poweroff -f
