@@ -1,0 +1,14 @@
+#!/bin/busybox sh
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+/bin/busybox mount -t devtmpfs none /dev
+
+echo "=== insmod ==="
+/bin/busybox insmod /syscall_stack.ko || echo "insmod FAILED"
+/bin/busybox dmesg
+
+/bin/busybox rmmod syscall_stack 2>/dev/null
+/bin/busybox dmesg
+
+echo "=== done ==="
+/bin/busybox poweroff -f
