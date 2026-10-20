@@ -1,0 +1,230 @@
+diff -ruN a/arch/x86/entry/common.c b/arch/x86/entry/common.c
+--- a/arch/x86/entry/common.c	2026-10-20 21:12:08.774131258 +0800
++++ b/arch/x86/entry/common.c	2026-10-20 21:12:08.722127434 +0800
+@@ -32,6 +32,7 @@
+ #include <asm/syscall.h>
+ #include <asm/irq_stack.h>
+ 
++#include <linux/syscall_stats.h>
+ 
+ #ifdef CONFIG_X86_64
+ 
+@@ -45,6 +46,7 @@
+ 
+ 	if (likely(unr < NR_syscalls)) {
+ 		unr = array_index_nospec(unr, NR_syscalls);
++		rust_syscall_stats_inc(unr);
+ 		regs->ax = x64_sys_call(regs, unr);
+ 		return true;
+ 	}
+diff -ruN a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+--- a/arch/x86/entry/syscalls/syscall_64.tbl	2026-10-20 21:12:08.774131258 +0800
++++ b/arch/x86/entry/syscalls/syscall_64.tbl	2026-10-20 21:12:08.718127140 +0800
+@@ -387,6 +387,9 @@
+ 461	common	lsm_list_modules	sys_lsm_list_modules
+ 462 	common  mseal			sys_mseal
+ 
++463	common  get_taskinfo		sys_get_taskinfo
++464	common	get_syscall_count	sys_get_syscall_count
++465	common	reset_syscall_counts	sys_reset_syscall_counts
+ 
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+diff -ruN a/include/linux/syscalls.h b/include/linux/syscalls.h
+--- a/include/linux/syscalls.h	2026-10-20 21:12:08.774131258 +0800
++++ b/include/linux/syscalls.h	2026-10-20 21:12:08.734128317 +0800
+@@ -1308,7 +1308,11 @@
+ int __sys_setsockopt(int fd, int level, int optname, char __user *optval,
+ 		int optlen);
+ 
++struct taskinfo;
+ 
++asmlinkage long sys_get_taskinfo(struct taskinfo __user *info, size_t len);
++asmlinkage long sys_get_syscall_count(unsigned int nr);
++asmlinkage long sys_reset_syscall_counts(void);
+ 
+ 
+ #endif
+diff -ruN a/include/linux/syscall_stats.h b/include/linux/syscall_stats.h
+--- a/include/linux/syscall_stats.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/linux/syscall_stats.h	2026-10-20 21:12:08.742128905 +0800
+@@ -0,0 +1,6 @@
++#ifndef _LINUX_SYSCALL_STATS_H
++#define _LINUX_SYSCALL_STATS_H
++
++extern void rust_syscall_stats_inc(unsigned int nr);
++
++#endif
+diff -ruN a/include/uapi/linux/taskinfo.h b/include/uapi/linux/taskinfo.h
+--- a/include/uapi/linux/taskinfo.h	1970-01-01 08:00:00.000000000 +0800
++++ b/include/uapi/linux/taskinfo.h	2026-10-20 21:12:08.746129199 +0800
+@@ -0,0 +1,12 @@
++#ifndef _UAPI_LINUX_TASKINFO_H
++#define _UAPI_LINUX_TASKINFO_H
++
++#include <linux/types.h>
++
++struct taskinfo {
++	__u32 tid;
++	__u32 pid;
++	char comm[16];
++};
++
++#endif
+diff -ruN a/kernel/Makefile b/kernel/Makefile
+--- a/kernel/Makefile	2026-10-20 21:12:08.774131258 +0800
++++ b/kernel/Makefile	2026-10-20 21:12:08.722127434 +0800
+@@ -11,6 +11,7 @@
+ 	    kthread.o sys_ni.o nsproxy.o \
+ 	    notifier.o ksysfs.o cred.o reboot.o \
+ 	    async.o range.o smpboot.o ucount.o regset.o ksyms_common.o
++obj-y  	+=  syscall_stats.o
+ 
+ obj-$(CONFIG_USERMODE_DRIVER) += usermode_driver.o
+ obj-$(CONFIG_MULTIUSER) += groups.o
+diff -ruN a/kernel/syscall_stats.c b/kernel/syscall_stats.c
+--- a/kernel/syscall_stats.c	1970-01-01 08:00:00.000000000 +0800
++++ b/kernel/syscall_stats.c	2026-10-20 21:12:08.738128611 +0800
+@@ -0,0 +1,21 @@
++#include <linux/syscalls.h>
++#include <uapi/linux/taskinfo.h>
++
++extern long rust_get_taskinfo(struct taskinfo __user *info, size_t len);
++extern long rust_get_syscall_count(unsigned int nr);
++extern long rust_reset_syscall_counts(void);
++
++SYSCALL_DEFINE2(get_taskinfo, struct taskinfo __user *, info, size_t, len)
++{
++	return rust_get_taskinfo(info, len);
++}
++
++SYSCALL_DEFINE1(get_syscall_count, unsigned int, nr)
++{
++	return rust_get_syscall_count(nr);
++}
++
++SYSCALL_DEFINE0(reset_syscall_counts)
++{
++	return rust_reset_syscall_counts();
++}
+diff -ruN a/samples/rust/Kconfig b/samples/rust/Kconfig
+--- a/samples/rust/Kconfig	2026-10-20 21:12:08.774131258 +0800
++++ b/samples/rust/Kconfig	2026-10-20 21:12:08.726127729 +0800
+@@ -37,4 +37,10 @@
+ 
+ 	  If unsure, say N.
+ 
++config SAMPLE_RUST_SYSCALLS
++    tristate "Rust syscall stats"
++    help
++      This option builds the Rust implementation of get_taskinfo and
++      syscall counting.
++
+ endif # SAMPLES_RUST
+diff -ruN a/samples/rust/Makefile b/samples/rust/Makefile
+--- a/samples/rust/Makefile	2026-10-20 21:12:08.774131258 +0800
++++ b/samples/rust/Makefile	2026-10-20 21:12:08.730128022 +0800
+@@ -5,3 +5,4 @@
+ 
+ subdir-$(CONFIG_SAMPLE_RUST_HOSTPROGS)		+= hostprogs
+ 
++obj-$(CONFIG_SAMPLE_RUST_SYSCALLS)      += rust_syscalls.o
+diff -ruN a/samples/rust/rust_syscalls.rs b/samples/rust/rust_syscalls.rs
+--- a/samples/rust/rust_syscalls.rs	1970-01-01 08:00:00.000000000 +0800
++++ b/samples/rust/rust_syscalls.rs	2026-10-20 21:12:08.750129493 +0800
+@@ -0,0 +1,95 @@
++//! get_taskinfo 与系统调用计数的 Rust 实现。
++
++use core::sync::atomic::{AtomicU64, Ordering};
++
++use kernel::bindings;
++use kernel::ffi::{c_char, c_long, c_uint};
++use kernel::uaccess::UserSlice;
++
++const MAX_SYSCALLS: usize = 512;
++const EINVAL: c_long = -22;
++const EFAULT: c_long = -14;
++
++/// 与用户态 `struct taskinfo` 布局一致
++#[repr(C)]
++pub struct TaskInfo {
++    tid: u32,
++    pid: u32,
++    comm:[u8; 16],
++}
++
++static COUNTS: [AtomicU64; MAX_SYSCALLS] =
++    [const { AtomicU64::new(0) }; MAX_SYSCALLS];
++
++
++
++/// 系统调用入口调用： 给 `nr` 计数
++#[no_mangle]
++pub extern "C" fn rust_syscall_stats_inc(nr: c_uint) {
++    if (nr as usize) < MAX_SYSCALLS {
++        COUNTS[nr as usize].fetch_add(1, Ordering::Relaxed);
++    }
++}
++
++/// 返回某个系统调用被调用过的次数
++#[no_mangle]
++pub extern "C" fn rust_get_syscall_count(nr: c_uint) -> c_long {
++    if(nr as usize) >= MAX_SYSCALLS {
++        return EINVAL;
++    }
++    COUNTS[nr as usize].load(Ordering::Relaxed) as c_long
++}
++
++/// 清零所有系统调用计数
++#[no_mangle]
++pub extern "C" fn rust_reset_syscall_counts() -> c_long {
++    for c in COUNTS.iter() {
++        c.store(0, Ordering::Relaxed);
++    }
++    0
++}
++
++/// 把当前 task 的 tid / pid / comm 写入用户指针。
++///
++/// # Safety
++///
++/// `info` 必须是当前进程可写的用户地址，`len` 是它的字节数。
++#[no_mangle]
++pub unsafe extern "C" fn rust_get_taskinfo(info: *mut TaskInfo, len:usize) -> c_long {
++    if info.is_null() || len < core::mem::size_of::<TaskInfo>()
++    {
++        return EINVAL;
++    }
++
++    let mut k = TaskInfo {
++        tid: 0,
++        pid: 0,
++        comm: [0u8; 16],
++    };
++
++    k.tid = kernel::current!().pid() as u32;
++    k.pid = kernel::current!().group_leader().pid() as u32;
++
++    // SAFETY: get_current() 返回当前 task，调用期间有效。
++    unsafe {
++        bindings::__get_task_comm(
++            k.comm.as_mut_ptr() as *mut c_char,
++            k.comm.len(),
++            bindings::get_current(),
++        );
++    }
++
++    // SAFETY: k 是本地结构，按字节切片不会越界。
++    let bytes = unsafe {
++        core::slice::from_raw_parts(
++            &k as *const TaskInfo as *const u8,
++            core::mem::size_of::<TaskInfo>(),
++        )
++    };
++
++    let mut writer = UserSlice::new(info as usize, bytes.len()).writer();
++    match writer.write_slice(bytes) {
++        Ok(()) => 0,
++        Err(_) => EFAULT,
++    }
++}
