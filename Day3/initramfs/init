@@ -1,0 +1,10 @@
+#!/bin/busybox sh
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+/bin/busybox mount -t devtmpfs none /dev
+
+echo "=== reset ==="; /reset
+echo "=== A ===";     /app_a
+echo "=== B ===";     /app_b
+
+/bin/busybox poweroff -f

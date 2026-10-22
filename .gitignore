@@ -1,3 +1,15 @@
 .idea/
 *.iml
 Day3/target/
+Day3/app/app_a
+Day3/app/app_b
+Day3/app/reset
+Day3/initramfs.cpio.gz
+Day3/initramfs/bin/
+Day3/initramfs/app_a
+Day3/initramfs/app_b
+Day3/initramfs/reset
+Day3/Cargo.toml
+Day3/Cargo.lock
+Day3/src/
+Day3/target/

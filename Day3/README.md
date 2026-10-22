@@ -84,14 +84,74 @@ nm vmlinux | grep -E 'rust_(get_taskinfo|get_syscall_count|reset_syscall_counts|
 
 四个都应为 `T`，说明 Rust 对象已经链接进 vmlinux。
 
-## 明天
+## 裸机应用（Rust）
 
-裸机应用 B（Rust，`no_std` + `no_main` + `syscall`）还没放进来，下一步做：
+`Day3/app/` 下是三个 `no_std` / `no_main` 的 Rust 程序：
 
-* `reset`：调 465 清零；
-* `app_a`：调 463 打印自己的 tid/pid/comm；
-* `app_b`：调 463，再逐个调 464 打印计数；
-* `init`：`reset → app_a → app_b`。
+| 文件 | 作用 |
+|---|---|
+| `mini.rs` | 内联 `syscall`、打印、`_start`、panic handler、`mem*` |
+| `reset.rs` | 调 465 清零计数 |
+| `app_a.rs` | 调 463 打印自己的 tid/pid/comm |
+| `app_b.rs` | 调 463，再调 464 打印各系统调用计数 |
+
+编译：
+
+```bash
+./app/build.sh
+```
+
+生成 `app/reset`、`app/app_a`、`app/app_b`，都是静态 `ET_EXEC`。
+
+打包 initramfs：
+
+```bash
+./scripts/mkinitramfs.sh
+# 如果 busybox 不在 /bin/busybox：
+# BUSYBOX=/path/to/busybox ./scripts/mkinitramfs.sh
+```
+
+脚本把 `init`、busybox、三个 app 放进临时目录，用 `cpio newc + gzip` 打包成
+`initramfs.cpio.gz`；动态链接的 busybox 会自动带上依赖库。
+
+启动：
+
+```bash
+./scripts/run_qemu.sh
+# 或
+KDIR=~/linux-6.12.107 ./scripts/run_qemu.sh
+```
+
+预期输出节选：
+
+```
+=== reset ===
+=== A ===
+A: hello
+A: tid = 66
+A: pid = 66
+A: comm = app_a
+A: Status: Finished
+=== B ===
+B: ret = 0
+tid =68
+pid =68
+comm =app_b
+--- syscall counts ---
+write(1) = 27
+...
+```
+
+`write(1) = 27` 是 reset 之后**所有进程**的 write 次数：两个 `echo`（各 2 次）、
+`app_a` 的 11 次、`app_b` 读取前的 12 次，合计 27。
+
+### 踩坑
+
+* `print_u` 里如果写成 `&buf[i..1]`，非零数字会越界 panic，进程被 `panic_handler`
+  静默 `exit(127)`；正确写法是 `&buf[i..]`；
+* `-nostartfiles` 之后必须自己提供 `_start`，否则 ELF 没有入口；
+* `no_std` 下没有 `memcpy/memset`，要自己实现，否则链接报 undefined；
+* 打包必须在 `initramfs/` 目录里执行 `find .`，否则归档路径会多一层。
 
 ## 备注
 
