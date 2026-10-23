@@ -58,9 +58,30 @@ impl Drop for SyscallStack {
 export PATH="$HOME/.cargo/bin:$PATH"
 export RUSTUP_TOOLCHAIN=1.83.0
 
+# 1. 编译模块
 make LLVM=1 KDIR=$HOME/linux-6.12.107
-./scripts/mkinitramfs.sh
-./scripts/run_qemu.sh
+
+# 2. 准备临时根目录
+rm -rf /tmp/ird
+mkdir -p /tmp/ird/{bin,lib64,lib/x86_64-linux-gnu,proc,sys,dev}
+cp /usr/bin/busybox /tmp/ird/bin/
+cp /lib64/ld-linux-x86-64.so.2 /tmp/ird/lib64/
+cp /lib/x86_64-linux-gnu/libc.so.6 \
+   /lib/x86_64-linux-gnu/libresolv.so.2 /tmp/ird/lib/x86_64-linux-gnu/
+
+# 3. init 和模块
+cp initramfs/init syscall_stack.ko /tmp/ird/
+chmod +x /tmp/ird/init
+
+# 4. 打包
+(cd /tmp/ird && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9) \
+  > initramfs.cpio.gz
+
+# 5. 启动
+qemu-system-x86_64 -m 1G -smp 2 -accel tcg,thread=multi \
+  -kernel "$HOME/linux-6.12.107/arch/x86/boot/bzImage" \
+  -initrd "$PWD/initramfs.cpio.gz" \
+  -append "console=ttyS0 panic=-1" -nographic -no-reboot
 ```
 
 ## 输出解读

@@ -98,7 +98,17 @@ nm vmlinux | grep -E 'rust_(get_taskinfo|get_syscall_count|reset_syscall_counts|
 编译：
 
 ```bash
-./app/build.sh
+rustc --edition 2021 -O -C panic=abort -C relocation-model=static \
+  -C link-arg=-nostartfiles -C link-arg=-static -C link-arg=-no-pie \
+  -o app/reset app/reset.rs
+
+rustc --edition 2021 -O -C panic=abort -C relocation-model=static \
+  -C link-arg=-nostartfiles -C link-arg=-static -C link-arg=-no-pie \
+  -o app/app_a app/app_a.rs
+
+rustc --edition 2021 -O -C panic=abort -C relocation-model=static \
+  -C link-arg=-nostartfiles -C link-arg=-static -C link-arg=-no-pie \
+  -o app/app_b app/app_b.rs
 ```
 
 生成 `app/reset`、`app/app_a`、`app/app_b`，都是静态 `ET_EXEC`。
@@ -106,20 +116,30 @@ nm vmlinux | grep -E 'rust_(get_taskinfo|get_syscall_count|reset_syscall_counts|
 打包 initramfs：
 
 ```bash
-./scripts/mkinitramfs.sh
-# 如果 busybox 不在 /bin/busybox：
-# BUSYBOX=/path/to/busybox ./scripts/mkinitramfs.sh
+rm -rf /tmp/ird
+mkdir -p /tmp/ird/{bin,proc,sys,dev}
+
+# 静态 busybox：只拷这一个文件
+cp /path/to/static/busybox /tmp/ird/bin/busybox
+
+cp initramfs/init /tmp/ird/init
+cp app/reset app/app_a app/app_b /tmp/ird/
+chmod +x /tmp/ird/init /tmp/ird/bin/busybox \
+         /tmp/ird/reset /tmp/ird/app_a /tmp/ird/app_b
+
+(cd /tmp/ird && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9) \
+  > initramfs.cpio.gz
 ```
 
-脚本把 `init`、busybox、三个 app 放进临时目录，用 `cpio newc + gzip` 打包成
-`initramfs.cpio.gz`；动态链接的 busybox 会自动带上依赖库。
+如果你用的是动态链接的 busybox，还要把 `ldd` 列出的库按原路径拷进 `/tmp/ird`。
 
 启动：
 
 ```bash
-./scripts/run_qemu.sh
-# 或
-KDIR=~/linux-6.12.107 ./scripts/run_qemu.sh
+qemu-system-x86_64 -m 1G -smp 2 -accel tcg,thread=multi \
+  -kernel ~/linux-6.12.107/arch/x86/boot/bzImage \
+  -initrd "$PWD/initramfs.cpio.gz" \
+  -append "console=ttyS0 panic=-1" -nographic -no-reboot
 ```
 
 预期输出节选：
