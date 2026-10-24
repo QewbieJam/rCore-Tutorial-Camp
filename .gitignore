@@ -19,3 +19,9 @@ Day4/Cargo.toml
 Day4/Cargo.lock
 Day4/src/
 Day4/target/
+Day5/init
+Day5/initramfs.cpio.gz
+Day5/Cargo.toml
+Day5/Cargo.lock
+Day5/src/
+Day5/target/

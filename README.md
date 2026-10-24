@@ -4,3 +4,4 @@
 - [Day2：Rust 模块打印系统调用栈](Day2/README.md)
 - [Day3：给内核加系统调用 get_taskinfo + 统计（Rust 实现）](Day3/README.md)
 - [Day4：RISC-V 最小启动（init + QEMU）](Day4/README.md)
+- [Day5：RISC-V 系统调用 get_taskinfo + 统计](Day5/README.md)
