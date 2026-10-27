@@ -1,0 +1,5 @@
+/target
+out.s
+out.elf
+*.o
+.idea/
