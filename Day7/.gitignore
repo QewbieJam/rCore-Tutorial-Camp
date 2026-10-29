@@ -1,5 +1,4 @@
-/target
-out.s
-out.elf
 *.o
+*.elf
+*.bin
 .idea/
