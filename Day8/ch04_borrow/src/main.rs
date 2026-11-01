@@ -49,5 +49,19 @@ fn main() {
 
 
     println!("left: {:?}", left);
+    println!("v: {:?}", v);     // 当 left 和 right 的生命周期结束
+                                // v 才可以重新获得 RW 权限（NLL机制）
+
+
+    // 使用 iter_mut 让所有元素乘 2
+    for x in v.iter_mut() {
+        *x *= 2;
+    }
+
+    let mut temp = Vec::new();
+    for x in &mut v {
+        temp.push(*x);
+    }
+    v.extend(temp);
     println!("v: {:?}", v);
 }
