@@ -52,6 +52,24 @@ impl Allocator for FakeAlloc {
     }
 }
 
+
+// 4.【核心】泛型函数：统一调用逻辑:
+// 泛型函数 + Trait约束 + 可变借用
+fn alloc_twice<A: Allocator>(a: &mut A) -> (usize, usize) {
+
+    // <A>: 声明一个泛型参数A
+    // Allocator： trait 约束
+    // *** 作用：可传入 &mut StackAlloc, 也可传入 &mut PageAlloc
+    // *** 效果：静态分发，运行速度快
+
+    let first = a.alloc();
+    let second = a.alloc();
+    (first, second)
+}
+
+
+
+
 fn main() {
     // 测试 StackAlloc
     // 样例初始化
@@ -59,19 +77,20 @@ fn main() {
         next: 0x8020_0000,
         end: 0x8023_0000
     };
-
+    // 把 &mut s 传给泛型函数，编译器自动推断 A 为 StackAlloc
+    let (a1, a2) = alloc_twice(&mut s);
+    println!("分配结果：{:#x}, {:#x}", a1, a2);
     // 调用方法
-    println!("第一次分配：{:#x}", s.alloc());
-    println!("第二次分配：{:#x}", s.alloc());
+    // println!("第一次分配：{:#x}", s.alloc());
+    // println!("第二次分配：{:#x}", s.alloc());
 
     // 打印剩余空间
     println!("剩余空间: {:#x}", s.remaining());
 
     // 测试 FakeAlloc
     let mut f = FakeAlloc { n: 0 };
-
-    println!("{:?}", f.alloc());
-    println!("{:?}", f.alloc());
+    let (b1, b2) = alloc_twice(&mut f);
+    println!("两次分配：{:#x}, {:#x}", b1, b2);
     println!("剩余：{:#x}", f.remaining());
 
 }
