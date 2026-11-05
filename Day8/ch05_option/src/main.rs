@@ -82,8 +82,8 @@ fn main() {
 
     // 测试三种情况
     print_result(0, translate(&page_table, 0)); // 有效项
-    print_result(0, translate(&page_table, 1)); // 无效项（Valid bit = 0）
-    print_result(0, translate(&page_table, 9)); // 越界（页表长度仅为 5）
+    print_result(1, translate(&page_table, 1)); // 无效项（Valid bit = 0）
+    print_result(9, translate(&page_table, 9)); // 越界（页表长度仅为 5）
 }
 
 
