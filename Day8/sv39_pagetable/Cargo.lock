@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "ch07_mini_pagetable"
+name = "sv39_pagetable"
 version = "0.1.0"
