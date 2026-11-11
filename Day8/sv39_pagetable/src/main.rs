@@ -60,10 +60,31 @@ impl PhysMem {
     }
 }
 
+// ==============
+// 2. 物理页分配器（Frame Allocator）【3.0新增】
+// ==============
 
+struct FrameAlloc {
+    next: usize,
+}
+
+impl FrameAlloc {
+    // 初始化分配器，指定起始物理地址
+    pub fn new(start_addr: usize) -> Self {
+        Self { next: start_addr }
+    }
+
+    // 分配一个物理页（4KB），返回其物理地址
+    pub fn alloc_page(&mut self) -> usize {
+        let addr = self.next;
+        self.next += 0x1000;        // 指针后移 4KB
+        addr
+    }
+
+}
 
 // ==============
-// 2. 页表管理器（Sv39 三级）
+// 3. 页表管理器（Sv39 三级）
 // ==============
 
 struct PageTable {
@@ -100,10 +121,7 @@ impl PageTable {
         // 从物理内存读取，如果越界则返回 None
         let pte = self.phys_mem.read_u64(pte_addr)? as usize;
         // 检查 Valid 位（最低位是否为 1）
-        if pte & 1 == 0 {
-            return None;
-        }
-
+        if pte & 1 == 0 { return None; }
         Some((pte_addr, pte))
     }
 
@@ -169,15 +187,44 @@ impl PageTable {
 
 fn main() {
 
-    // 初始化 8MB 物理内存，基址 0x8020_0000
+    // 1. 初始化 8MB 物理内存，基址 0x8020_0000（0x8020_0000 ~ 0x80A0_0000）
     let phys_mem = PhysMem::new(0x8020_0000, 8);
 
-    let mut pt = PageTable::new(phys_mem, 0x80554);
+    // 2. 初始化物理页分配器，起始地址设为全新的 0x8060_0000
+    let mut frame_alloc = FrameAlloc::new(0x8060_0000);
+
+    // 3. 自动分配三级页表所需的物理页，并提取 PPN
+    let root_addr = frame_alloc.alloc_page();
+    let l1_addr = frame_alloc.alloc_page();
+    let l0_addr = frame_alloc.alloc_page();
+
+    let root_ppn = root_addr >> 12;     // 0x80600
+    let l1_ppn = l1_addr >> 12;         // 0x80601
+    let l0_ppn = l0_addr >> 12;         // 0x80602
+
+    println!("--- 自动分配页表物理页 ---");
+    println!("Root PPN: {:#x} (Addr: {:#x})", root_ppn, root_addr);
+    println!("L1   PPN: {:#x} (Addr: {:#x})", l1_ppn, l1_addr);
+    println!("L0   PPN: {:#x} (Addr: {:#x})", l0_ppn, l0_addr);
+    println!("--------------------------------\n");
+
+    // 4. 初始化页表管理器
+    let mut pt = PageTable::new(phys_mem, root_ppn);
+
+    // 5. 自动建表流程 (完全动态，无硬编码) ———— 目前还没看懂
+    println!("--- 开始自动建表 ---");
+    // ④ map(root, 2, l1_ppn, 0b001) -> Valid=1, 非叶子
+    pt.map(root_ppn, 2, l1_ppn, 0b001);
+    // ⑤ map(l1, 1, l0_ppn, 0b001)   -> Valid=1, 非叶子
+    pt.map(l1_ppn, 1, l0_ppn, 0b001);
+    // ⑥ map(l0, 0, 0x80200, 0b1011) -> Valid=1, R=1, W=1 (叶子节点，指向内核 .text)
+    pt.map(l0_ppn, 0, 0x80200, 0b1011);
+    println!("--------------------------------\n");
 
     // 3.0 构造 map(&mut self, table_ppn: usize, idx: usize, next_ppn: usize, flags: usize) 函数
-    pt.map(0x80554, 2, 0x80557, 0b001);
-    pt.map(0x80557, 1, 0x80558, 0b001);
-    pt.map(0x80558, 0, 0x80200, 0b1011);
+    // pt.map(0x80554, 2, 0x80557, 0b001);
+    // pt.map(0x80557, 1, 0x80558, 0b001);
+    // pt.map(0x80558, 0, 0x80200, 0b1011);
 
     // // 模拟"内核建表"
     // pt.phys_mem.write_u64((0x80554 << 12) + (2 << 3), 0x20155c01);
@@ -189,12 +236,11 @@ fn main() {
 
     match pt.translate(va) {
         Some(pa) => {
-            println!("VA: {:x?}", va);
-            println!("PA: {:x?}", pa);
+            println!("[VA]: {:x?}", va);
+            println!("[PA]: {:x?}", pa);
         }
         None => {
-            println!("--- 页表项无效或越界 ---");
-            panic!("--- Sv39 页表翻译未通过 ---")
+            panic!("翻译失败，返回 None");
         }
     }
 
