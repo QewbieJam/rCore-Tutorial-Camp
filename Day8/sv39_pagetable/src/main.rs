@@ -76,6 +76,22 @@ impl PageTable {
         Self { phys_mem, root_ppn }
     }
 
+    // 【核心】map 函数：在指定页表的指定索引处写入一个 PTE
+    // table_ppn: 当前页表的物理页号 (PPN)
+    // idx:       页表中的索引 (0-511)
+    // next_ppn:  下一级页表或最终数据页的物理页号
+    // flags:     权限标志位 (如 0b001, 0b1011 等)
+    fn map(&mut self, table_ppn: usize, idx: usize, next_ppn: usize, flags: usize) {
+        // 1. 计算 PTE 在物理内存中的真实地址
+        let pte_addr = (table_ppn << 12) + (idx << 3);
+        // 2. 构造 PTE：PPN 左移 10 位，然后与 flags 按位或
+        let pte = ((next_ppn << 10) | flags) as u64;
+        // 3. 写入物理内存
+        self.phys_mem.write_u64(pte_addr, pte);
+        // 打印调试信息
+        println!("[MAP] table_ppn={:#x} idx={} -> pte_addr={:#x}, pte={:#x}", table_ppn, idx, pte_addr, pte);
+    }
+
     // 辅助方法 read_pte()
     // 给定一个页表的 PPN 和 idx，读取其中的 PTE
     fn read_pte(&self, ppn:usize, idx: usize) -> Option<(usize, usize)> {
@@ -94,7 +110,6 @@ impl PageTable {
 
     // 【核心】Sv39 三级地址翻译
     fn translate(&self, va: usize) -> Option<usize> {
-
 
         // 2.0 调用辅助函数检查叶子节点，并翻译最终物理地址
 
@@ -159,10 +174,15 @@ fn main() {
 
     let mut pt = PageTable::new(phys_mem, 0x80554);
 
-    // 模拟"内核建表"
-    pt.phys_mem.write_u64((0x80554 << 12) + (2 << 3), 0x20155c01);
-    pt.phys_mem.write_u64((0x80557 << 12) + (1 << 3), 0x20156001);
-    pt.phys_mem.write_u64((0x80558 << 12) + (0 << 3), 0x2008000b);
+    // 3.0 构造 map(&mut self, table_ppn: usize, idx: usize, next_ppn: usize, flags: usize) 函数
+    pt.map(0x80554, 2, 0x80557, 0b001);
+    pt.map(0x80557, 1, 0x80558, 0b001);
+    pt.map(0x80558, 0, 0x80200, 0b1011);
+
+    // // 模拟"内核建表"
+    // pt.phys_mem.write_u64((0x80554 << 12) + (2 << 3), 0x20155c01);
+    // pt.phys_mem.write_u64((0x80557 << 12) + (1 << 3), 0x20156001);
+    // pt.phys_mem.write_u64((0x80558 << 12) + (0 << 3), 0x2008000b);
 
 
     let va = 0x80200000;
