@@ -1,18 +1,31 @@
 
-// ==============
-// 1. 模拟物理内存
-// ==============
-
+// BASIC
 
 // 0x80554010 - 0x80200000 = 0x354010   ←   下标
-
 // ********真实 QEMU	内核 map() → PageTableEntry::new(ppn, flags)********	0x20155c01   ←   PTE
-
 // 0x20155c01 / 1024 = 0x80557  拆除页号，余数 1 标志位（V=1）
 // 0x80557 << 12 = 0x80557000   变下一级地址
 
 
+// LOG:
 
+// 26.11.10 —— 1.0 - 仅仅可以翻译最终物理地址，无 - 检查叶子节点
+// 26.11.11 —— 2.0 - 调用辅助函数检查叶子节点，并翻译最终物理地址
+
+
+// TARGET:
+
+ // 1.0 - 仅仅可以翻译最终物理地址，无 - 检查叶子节点
+ // 2.0 - 检查叶子节点 + 逐级打印
+ // 3.0 - 实现 map()函数 — fn map(&mut self, table_ppn: usize, idx: usize, next_ppn: usize, flags: usize)
+ // 4.0 - 自动建表（不写死 0x80554 / 0x80557 / 0x80558，由程序自己分配。）
+
+
+
+
+// ==============
+// 1. 模拟物理内存
+// ==============
 struct PhysMem {
     base: usize,            // 物理内存起始地址
     data: Vec<u8>,          // 实际存储的字节数组（缓冲区）
@@ -65,9 +78,9 @@ impl PageTable {
 
     // 辅助方法 read_pte()
     // 给定一个页表的 PPN 和 idx，读取其中的 PTE
-    fn read_pte(&self, ppn:usize, idx: usize) -> Option<usize> {
+    fn read_pte(&self, ppn:usize, idx: usize) -> Option<(usize, usize)> {
         // 计算该 PTE 在物理内存中的真实地址
-         let pte_addr = (ppn << 12) + (idx  << 3);
+        let pte_addr = (ppn << 12) + (idx  << 3);
         // 从物理内存读取，如果越界则返回 None
         let pte = self.phys_mem.read_u64(pte_addr)? as usize;
         // 检查 Valid 位（最低位是否为 1）
@@ -75,32 +88,66 @@ impl PageTable {
             return None;
         }
 
-        Some(pte)
+        Some((pte_addr, pte))
     }
 
 
     // 【核心】Sv39 三级地址翻译
     fn translate(&self, va: usize) -> Option<usize> {
+
+
+        // 2.0 调用辅助函数检查叶子节点，并翻译最终物理地址
+
+        let mut ppn = self.root_ppn;
+        let levels = ["L2", "L1", "L0"];
+
+        for(level_idx, level_name) in levels.iter().enumerate() {
+            let vpn = (va >> (12 + (2 - level_idx) * 9)) & 0x1FF;
+
+            // 调用辅助函数，解构 addr 和 pte，使用到了元组
+            let (pte_addr, pte) = self.read_pte(ppn, vpn)?;
+
+            let is_leaf = (pte & 0b1110) != 0;
+            let next_ppn = pte >> 10;
+            let flags = pte & 0x3FF;
+
+            if is_leaf {
+                println!("[{}] ppn={:#x} idx={} addr={:#x} pte={:#x} -> LEAF, flags={:#x}",
+                        level_name, ppn, vpn, pte_addr, pte, flags);
+                let offset = va & 0xFFF;
+                let pa = (next_ppn << 12) | offset;
+                println!("[PA] {:#x}", pa);
+                return Some(pa);
+            } else {
+                println!("[{}] ppn={:#x} idx={} addr={:#x} pte={:#x} -> next ppn {:#x}",
+                         level_name, ppn, vpn, pte_addr, pte, next_ppn);
+                ppn = next_ppn;
+            }
+        }
+        None
+
+        // 1.0 - 仅仅可以翻译最终物理地址，无 - 检查叶子节点
+
         // 1. 划分 vpn[2-0], 以及 offset
         // ** Sv39 里的 VPN（每 9 位一段）
-        let vpn_2 = (va >> 30) & 0x1FF;
-        let vpn_1 = (va >> 21) & 0x1FF;
-        let vpn_0 = (va >> 12) & 0x1FF;
-        let offset = va & 0xFFF;
-        // 2. 第一级页表（L2，根页表）
-        let pte_l2 = self.read_pte(self.root_ppn, vpn_2)?;
-        let ppn_l2 = pte_l2 >> 10;
-        // 3. 第二级页表（L1）
-        let pte_l1 = self.read_pte(ppn_l2, vpn_1)?;
-        let ppn_l1 = pte_l1 >> 10;
-        // 4. 第三级页表（L0，叶子节点）
-        let pte_l0 = self.read_pte(ppn_l1, vpn_0)?;
-
-        // 叶子节点检查：R, W, X 至少有一个为 1（即 pte & 0b1110 != 0） still in development
-        let ppn_final = pte_l0 >> 10;
-
-        // 5. 拼接成最终物理地址
-        Some((ppn_final << 12) | offset)
+        // let vpn_2 = (va >> 30) & 0x1FF;
+        // let vpn_1 = (va >> 21) & 0x1FF;
+        // let vpn_0 = (va >> 12) & 0x1FF;
+        // let offset = va & 0xFFF;
+        // // 2. 第一级页表（L2，根页表）
+        // let pte_l2 = self.read_pte(self.root_ppn, vpn_2)?;
+        // let ppn_l2 = pte_l2 >> 10;
+        // // 3. 第二级页表（L1）
+        // let pte_l1 = self.read_pte(ppn_l2, vpn_1)?;
+        // let ppn_l1 = pte_l1 >> 10;
+        // // 4. 第三级页表（L0，叶子节点）
+        // let pte_l0 = self.read_pte(ppn_l1, vpn_0)?;
+        //
+        // // 叶子节点检查：R, W, X 至少有一个为 1（即 pte & 0b1110 != 0） still in development
+        // let ppn_final = pte_l0 >> 10;
+        //
+        // // 5. 拼接成最终物理地址
+        // Some((ppn_final << 12) | offset)
     }
 }
 
