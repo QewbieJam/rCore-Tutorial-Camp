@@ -25,3 +25,14 @@ Day5/Cargo.toml
 Day5/Cargo.lock
 Day5/src/
 Day5/target/
+
+# compiler 项目
+compiler/target/
+
+# qemu-test：只保留 init 脚本和模块，其余是可再生的 rootfs
+qemu-test/initramfs.cpio.gz
+qemu-test/initramfs/bin/
+qemu-test/initramfs/lib/
+qemu-test/initramfs/lib64/
+qemu-test/initramfs/sbin/
+qemu-test/initramfs/usr/
