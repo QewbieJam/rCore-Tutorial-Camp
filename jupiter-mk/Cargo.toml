@@ -1,0 +1,8 @@
+[workspace]
+members = ["kernel"]
+resolver = "3"
+
+[profile.release]
+panic = "abort"
+debug = true
+lto = false

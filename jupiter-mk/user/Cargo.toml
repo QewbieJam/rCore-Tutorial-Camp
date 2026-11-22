@@ -1,0 +1,28 @@
+[package]
+name = "jupiter-user"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[lib]
+name = "jupiter_user"
+path = "src/lib.rs"
+
+[[bin]]
+name = "console"
+path = "src/bin/console.rs"
+
+[[bin]]
+name = "shell"
+path = "src/bin/shell.rs"
+
+[[bin]]
+name = "hello"
+path = "src/bin/hello.rs"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+debug = false
+lto = true

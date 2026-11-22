@@ -1,0 +1,6 @@
+[build]
+target = "riscv64gc-unknown-none-elf"
+
+[target.riscv64gc-unknown-none-elf]
+# Linker script is selected by kernel/build.rs using the BOARD env var.
+rustflags = ["-C", "link-arg=-no-pie"]
