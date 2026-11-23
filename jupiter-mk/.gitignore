@@ -1,2 +1,6 @@
 /target
 /user/target
+
+# sd-boot 里的生成物
+/sd-boot/jupiter-kernel
+/sd-boot/boot.scr

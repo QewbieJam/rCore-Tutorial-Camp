@@ -12,7 +12,7 @@ endif
 QEMU := qemu-system-riscv64
 QEMU_ARGS := -machine virt -nographic -bios default -m 128M
 
-.PHONY: all build user kernel run run-jupiter debug clean fmt
+.PHONY: all build user kernel run run-jupiter sd-bundle debug clean fmt
 
 all: build
 
@@ -32,6 +32,12 @@ run: build
 run-jupiter: kernel
 	@echo "Jupiter kernel: $(KERNEL_ELF)"
 	@echo "Load it with U-Boot; see docs/jupiter-boot.md."
+
+# 准备 SD 卡启动包：ELF + U-Boot 脚本
+sd-bundle: kernel
+	@mkdir -p sd-boot
+	cp $(KERNEL_ELF) sd-boot/jupiter-kernel
+	mkimage -A riscv -O linux -T script -C none -d sd-boot/boot.cmd sd-boot/boot.scr
 
 debug: build
 	$(QEMU) $(QEMU_ARGS) -kernel $(KERNEL_ELF) -s -S
