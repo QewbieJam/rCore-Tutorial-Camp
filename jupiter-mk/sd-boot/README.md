@@ -90,18 +90,21 @@ mmc dev 0
 ls mmc 0:1 /
 ```
 
-确认 `/jupiter-kernel` 在哪个分区（可能是 `0:1`、`0:2`），然后：
+确认 `/jupiter-kernel` 在哪个分区（可能是 `0:1` ~ `0:6`）。
+> **注意**：Milk-V 官方 Jupiter 镜像的 bootfs 通常是第 5 个分区，即 `mmc 0:5`（ext4）。
+
+然后：
 
 ```
 setenv kernel_addr_r 0x30000000
-load mmc 0:1 ${kernel_addr_r} /jupiter-kernel
+load mmc 0:5 ${kernel_addr_r} /jupiter-kernel
 bootelf ${kernel_addr_r}
 ```
 
 或者直接跑脚本：
 
 ```
-load mmc 0:1 ${kernel_addr_r} /boot.scr
+load mmc 0:5 ${kernel_addr_r} /boot.scr
 source ${kernel_addr_r}
 ```
 
