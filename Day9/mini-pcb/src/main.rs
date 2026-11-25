@@ -11,6 +11,9 @@ struct Pcb {
     regs: [u64; 32],
     sepc: u64,
     stack: Vec<u64>,
+
+    saved_regs: [u64; 32],
+    saved_sepc: u64,
 }   // 一个 PCB 大小为 296 字节，各自段大小分别是 4B, 1B, (3B填充), 256B, 8B, 24B
 
 struct Scheduler {
@@ -29,6 +32,9 @@ impl Scheduler {
             regs: [0; 32],
             sepc: 0,
             stack: Vec::new(),
+
+            saved_regs: [0;32],
+            saved_sepc: 0,
         };
         self.ready.push_back(pcb);  // spawn：新进程进队尾
         self.next_pid += 1;
@@ -51,6 +57,13 @@ impl Scheduler {
                 true
             }
             None => false
+        }
+    }
+
+    fn run(&mut self, max: usize) {
+        let mut n =0;
+        while n < max && self.schedule() {
+            n += 1;
         }
     }
 }
